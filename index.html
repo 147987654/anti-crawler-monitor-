@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0e1a">
+<title>防爬虫监控</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro','Helvetica Neue',sans-serif;background:#0a0e1a;color:#e0e6ed;min-height:100vh;overflow-x:hidden;padding-bottom:env(safe-area-inset-bottom)}
+.header{background:linear-gradient(135deg,#0f1629 0%,#1a1f3a 100%);padding:16px 20px;padding-top:max(16px,env(safe-area-inset-top));display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100;border-bottom:1px solid rgba(255,255,255,0.06)}
+.header h1{font-size:18px;font-weight:700;background:linear-gradient(135deg,#00d4ff,#7c5cfc);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.status{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#4ade80}
+.status-dot{width:8px;height:8px;border-radius:50%;background:#4ade80;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.stats-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 16px}
+.stat-card{background:linear-gradient(145deg,#111827,#1a2035);border-radius:14px;padding:14px 16px;border:1px solid rgba(255,255,255,0.05);position:relative;overflow:hidden}
+.stat-card::after{content:'';position:absolute;top:0;right:0;width:60px;height:60px;border-radius:50%;filter:blur(30px);opacity:.15}
+.stat-card.blue::after{background:#00d4ff}
+.stat-card.red::after{background:#f43f5e}
+.stat-card.yellow::after{background:#eab308}
+.stat-card.green::after{background:#22c55e}
+.stat-label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.stat-value{font-size:28px;font-weight:800;letter-spacing:-1px}
+.stat-value.blue{color:#00d4ff}
+.stat-value.red{color:#f43f5e}
+.stat-value.yellow{color:#eab308}
+.stat-value.green{color:#22c55e}
+.stat-sub{font-size:11px;color:#475569;margin-top:2px}
+.section{padding:0 16px;margin-bottom:16px}
+.section-title{font-size:14px;font-weight:700;color:#94a3b8;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.section-title span{font-size:16px}
+.ip-list{display:flex;flex-direction:column;gap:8px}
+.ip-item{background:#111827;border-radius:12px;padding:12px 14px;border:1px solid rgba(255,255,255,0.04);display:flex;align-items:center;gap:12px}
+.ip-rank{width:24px;height:24px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+.ip-rank.r1{background:rgba(244,63,94,.2);color:#f43f5e}
+.ip-rank.r2{background:rgba(249,115,22,.2);color:#f97316}
+.ip-rank.r3{background:rgba(234,179,8,.2);color:#eab308}
+.ip-rank.rn{background:rgba(100,116,139,.15);color:#64748b}
+.ip-info{flex:1;min-width:0}
+.ip-addr{font-size:14px;font-weight:600;font-family:'SF Mono',Menlo,monospace;color:#e2e8f0}
+.ip-reason{font-size:11px;color:#64748b;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ip-count{font-size:16px;font-weight:700;color:#f43f5e;flex-shrink:0}
+.log-list{display:flex;flex-direction:column;gap:1px;background:rgba(255,255,255,0.02);border-radius:12px;overflow:hidden}
+.log-item{background:#111827;padding:10px 14px;display:flex;align-items:center;gap:10px;font-size:13px}
+.log-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.log-dot.blocked{background:#f43f5e}
+.log-dot.challenge{background:#eab308}
+.log-dot.allowed{background:#22c55e}
+.log-time{color:#475569;font-family:'SF Mono',Menlo,monospace;font-size:11px;flex-shrink:0}
+.log-text{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.log-ip{font-family:'SF Mono',Menlo,monospace;font-weight:600;color:#cbd5e1}
+.tab-bar{position:fixed;bottom:0;left:0;right:0;background:rgba(15,22,41,0.95);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid rgba(255,255,255,0.06);display:flex;padding:8px 0;padding-bottom:max(8px,env(safe-area-inset-bottom));z-index:100}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;cursor:pointer;transition:all .2s}
+.tab-icon{font-size:20px;opacity:.5;transition:all .2s}
+.tab-label{font-size:10px;color:#475569;font-weight:600;transition:all .2s}
+.tab.active .tab-icon{opacity:1}
+.tab.active .tab-label{color:#00d4ff}
+.page{display:none;padding-bottom:80px}
+.page.active{display:block}
+.chart-wrap{background:#111827;border-radius:14px;margin:0 16px 16px;padding:16px;border:1px solid rgba(255,255,255,0.04)}
+.chart-title{font-size:12px;color:#64748b;margin-bottom:12px}
+canvas{width:100%!important;height:120px!important}
+.detail-card{background:#111827;border-radius:14px;margin:0 16px 12px;padding:16px;border:1px solid rgba(255,255,255,0.04)}
+.detail-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+.detail-row:last-child{border:none}
+.detail-key{font-size:12px;color:#64748b}
+.detail-val{font-size:13px;font-weight:600;color:#e2e8f0}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>防爬虫监控</h1>
+  <div class="status"><div class="status-dot"></div>监控中</div>
+</div>
+
+<div class="page active" id="page-overview">
+  <div class="stats-row">
+    <div class="stat-card blue">
+      <div class="stat-label">总请求</div>
+      <div class="stat-value blue" id="s-total">0</div>
+      <div class="stat-sub" id="s-rpm">0/分钟</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-label">已拦截</div>
+      <div class="stat-value red" id="s-blocked">0</div>
+      <div class="stat-sub" id="s-rate">拦截率 0%</div>
+    </div>
+    <div class="stat-card yellow">
+      <div class="stat-label">验证中</div>
+      <div class="stat-value yellow" id="s-challenge">0</div>
+      <div class="stat-sub">人机验证</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-label">运行时间</div>
+      <div class="stat-value green" id="s-uptime">0s</div>
+      <div class="stat-sub" id="s-allowed">放行 0</div>
+    </div>
+  </div>
+
+  <div class="chart-wrap">
+    <div class="chart-title">请求趋势 (最近60秒)</div>
+    <canvas id="chart"></canvas>
+  </div>
+
+  <div class="section">
+    <div class="section-title"><span>🚫</span> 拦截IP排行</div>
+    <div class="ip-list" id="ip-list"></div>
+  </div>
+</div>
+
+<div class="page" id="page-logs">
+  <div style="padding:14px 16px 10px">
+    <div class="section-title"><span>📋</span> 实时日志</div>
+  </div>
+  <div class="section">
+    <div class="log-list" id="log-list"></div>
+  </div>
+</div>
+
+<div class="page" id="page-detail">
+  <div style="padding:14px 16px 10px">
+    <div class="section-title"><span>📊</span> 防御详情</div>
+  </div>
+  <div class="detail-card">
+    <div class="detail-row"><span class="detail-key">IP黑白名单</span><span class="detail-val" style="color:#22c55e">● 已启用</span></div>
+    <div class="detail-row"><span class="detail-key">指纹识别</span><span class="detail-val" style="color:#22c55e">● 已启用</span></div>
+    <div class="detail-row"><span class="detail-key">速率限制</span><span class="detail-val" style="color:#22c55e">● 已启用</span></div>
+    <div class="detail-row"><span class="detail-key">行为分析</span><span class="detail-val" style="color:#22c55e">● 已启用</span></div>
+    <div class="detail-row"><span class="detail-key">挑战验证</span><span class="detail-val" style="color:#22c55e">● 已启用</span></div>
+    <div class="detail-row"><span class="detail-key">威胁情报</span><span class="detail-val" style="color:#64748b">○ 待配置</span></div>
+  </div>
+  <div class="detail-card">
+    <div class="detail-row"><span class="detail-key">速率限制</span><span class="detail-val">100次/60秒</span></div>
+    <div class="detail-row"><span class="detail-key">突发限制</span><span class="detail-val">20次</span></div>
+    <div class="detail-row"><span class="detail-key">挑战阈值</span><span class="detail-val">50分</span></div>
+    <div class="detail-row"><span class="detail-key">已识别爬虫类型</span><span class="detail-val" id="d-bots">0</span></div>
+  </div>
+  <div class="section">
+    <div class="section-title"><span>⚡</span> 拦截原因分布</div>
+    <div id="reason-dist"></div>
+  </div>
+</div>
+
+<div class="tab-bar">
+  <div class="tab active" onclick="switchTab('overview')">
+    <div class="tab-icon">📊</div>
+    <div class="tab-label">总览</div>
+  </div>
+  <div class="tab" onclick="switchTab('logs')">
+    <div class="tab-icon">📋</div>
+    <div class="tab-label">日志</div>
+  </div>
+  <div class="tab" onclick="switchTab('detail')">
+    <div class="tab-icon">⚙️</div>
+    <div class="tab-label">详情</div>
+  </div>
+</div>
+
+<script>
+let trendData=[], blockedTrend=[], chartCtx, chartW, chartH;
+const dpr = window.devicePixelRatio || 2;
+
+function initChart(){
+  const c=document.getElementById('chart');
+  chartCtx=c.getContext('2d');
+  const r=c.getBoundingClientRect();
+  c.width=r.width*dpr; c.height=r.height*dpr;
+  chartCtx.scale(dpr,dpr);
+  chartW=r.width; chartH=r.height;
+  trendData=Array(60).fill(0);
+  blockedTrend=Array(60).fill(0);
+}
+
+function drawChart(){
+  const ctx=chartCtx, w=chartW, h=chartH, pad=4;
+  ctx.clearRect(0,0,w,h);
+  const max=Math.max(...trendData,5);
+  const step=(w-pad*2)/(trendData.length-1);
+
+  ctx.strokeStyle='rgba(255,255,255,0.04)';ctx.lineWidth=1;
+  for(let i=0;i<4;i++){const y=pad+(h-pad*2)*i/3;ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(w-pad,y);ctx.stroke();}
+
+  ctx.beginPath();
+  trendData.forEach((v,i)=>{const x=pad+i*step,y=h-pad-(v/max)*(h-pad*2);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+  ctx.lineTo(pad+(trendData.length-1)*step,h-pad);ctx.lineTo(pad,h-pad);ctx.closePath();
+  const g=ctx.createLinearGradient(0,0,0,h);g.addColorStop(0,'rgba(0,212,255,0.2)');g.addColorStop(1,'rgba(0,212,255,0)');
+  ctx.fillStyle=g;ctx.fill();
+
+  ctx.beginPath();ctx.strokeStyle='#00d4ff';ctx.lineWidth=2;ctx.lineJoin='round';
+  trendData.forEach((v,i)=>{const x=pad+i*step,y=h-pad-(v/max)*(h-pad*2);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+  ctx.stroke();
+
+  ctx.beginPath();ctx.strokeStyle='rgba(244,63,94,0.7)';ctx.lineWidth=1.5;
+  blockedTrend.forEach((v,i)=>{const x=pad+i*step,y=h-pad-(v/max)*(h-pad*2);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+  ctx.stroke();
+}
+
+function fmtTime(s){
+  if(s<60)return s+'s';
+  if(s<3600)return Math.floor(s/60)+'m'+s%60+'s';
+  return Math.floor(s/3600)+'h'+Math.floor((s%3600)/60)+'m';
+}
+
+function updateUI(data){
+  const s=data.stats;
+  document.getElementById('s-total').textContent=s.total.toLocaleString();
+  document.getElementById('s-blocked').textContent=s.blocked.toLocaleString();
+  document.getElementById('s-challenge').textContent=s.challenged;
+  document.getElementById('s-uptime').textContent=fmtTime(s.uptime);
+  document.getElementById('s-rate').textContent='拦截率 '+s.block_rate+'%';
+  document.getElementById('s-allowed').textContent='放行 '+s.allowed;
+  document.getElementById('s-rpm').textContent=Math.round(s.total/Math.max(1,s.uptime)*60)+'/分钟';
+
+  const ipList=document.getElementById('ip-list');
+  ipList.innerHTML=data.top_ips.map((ip,i)=>{
+    const rc=i===0?'r1':i===1?'r2':i===2?'r3':'rn';
+    return `<div class="ip-item">
+      <div class="ip-rank ${rc}">${i+1}</div>
+      <div class="ip-info">
+        <div class="ip-addr">${ip.ip}</div>
+        <div class="ip-reason">${ip.reason}</div>
+      </div>
+      <div class="ip-count">${ip.count}</div>
+    </div>`;
+  }).join('');
+
+  const logList=document.getElementById('log-list');
+  logList.innerHTML=data.logs.slice().reverse().map(l=>
+    `<div class="log-item">
+      <div class="log-dot ${l.type}"></div>
+      <div class="log-time">${l.time}</div>
+      <div class="log-text"><span class="log-ip">${l.ip}</span> ${l.reason}</div>
+    </div>`
+  ).join('');
+
+  const newTotal = data.logs.filter(l=>true).length;
+  const newBlocked = data.logs.filter(l=>l.type==='blocked').length;
+  trendData.push(newTotal);trendData.shift();
+  blockedTrend.push(newBlocked);blockedTrend.shift();
+  drawChart();
+
+  const botTypes=new Set(data.top_ips.map(i=>i.type).filter(Boolean));
+  document.getElementById('d-bots').textContent=botTypes.size+'种';
+
+  const reasons={};
+  data.top_ips.forEach(ip=>{const r=ip.reason.split(':')[0];reasons[r]=(reasons[r]||0)+ip.count;});
+  const rd=document.getElementById('reason-dist');
+  const maxR=Math.max(...Object.values(reasons),1);
+  rd.innerHTML=Object.entries(reasons).sort((a,b)=>b[1]-a[1]).map(([k,v])=>{
+    const pct=Math.round(v/maxR*100);
+    const color=k.includes('bot')?'#f43f5e':k.includes('rate')?'#eab308':'#64748b';
+    return `<div style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span style="color:#94a3b8">${k}</span><span style="color:${color};font-weight:700">${v}</span>
+      </div>
+      <div style="height:6px;background:rgba(255,255,255,0.05);border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${color};border-radius:3px;transition:width .5s"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function switchTab(name){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.querySelectorAll('.tab')[['overview','logs','detail'].indexOf(name)].classList.add('active');
+}
+
+initChart();
+drawChart();
+
+async function fetchData(){
+  try{
+    const r=await fetch('/api/data');
+    const d=await r.json();
+    updateUI(d);
+  }catch(e){}
+}
+fetchData();
+setInterval(fetchData, 2000);
+window.addEventListener('resize',()=>{initChart();drawChart();});
+</script>
+</body>
+</html>
