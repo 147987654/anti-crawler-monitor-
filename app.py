@@ -269,7 +269,7 @@ def api_data():
 
 
 if __name__ == '__main__':
-    port = 7860
+    port = 8080
     print("=" * 50)
     print("  防爬虫监控系统")
     print(f"  端口: {port}")
